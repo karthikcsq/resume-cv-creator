@@ -102,8 +102,12 @@ export default function Home() {
       a.click();
       a.remove();
       URL.revokeObjectURL(href);
-    } catch (e: any) {
-      setError(e?.message || "Render failed");
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        setError(e.message);
+      } else {
+        setError("Render failed");
+      }
     } finally {
       setBusy(false);
     }
