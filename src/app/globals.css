@@ -1,26 +1,74 @@
 @import "tailwindcss";
 
+/* Neutral, professional theme with subtle accent */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Light cream base */
+  --background: #f1e4c6; /* page background (cream) */
+  --foreground: #111111; /* primary text (near-black) */
+  --surface: #fffaee; /* cards and inputs */
+  --surface-2: #fbf4e6; /* subtle cream block */
+  --border: #ede3d7; /* warm subtle border */
+  --muted: #5c5346; /* brown-gray secondary text */
+  --accent: #527cbb; /* navy accent */
+  --accent-strong: #3a67ab; /* darker navy hover */
+  --ring: rgba(53, 92, 153, 0.35); /* navy focus ring */
+  --radius: 14px; /* rounded rectangles */
+  /* Buttons distinct from card color */
+  --button-bg: #ffffff;
+  --button-border: #d8c9ae;
+  --button-text: #111111;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/* (Optional) Tailwind theme mapping removed to avoid lint errors. */
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* Dark theme removed */
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
 }
+
+/* Utility tokens leveraging CSS variables */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.muted {
+  color: var(--muted);
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: calc(var(--radius) - 6px);
+  border: 1px solid var(--button-border);
+  background: var(--button-bg);
+  color: var(--button-text);
+}
+.btn:hover { background: #faf6ee; }
+.btn:disabled { opacity: 0.6; }
+
+.btn-accent {
+  border-color: transparent;
+  background: var(--accent);
+  color: white;
+}
+.btn-accent:hover { background: var(--accent-strong); }
+
+.input {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: calc(var(--radius) - 6px);
+  padding: 0.5rem 0.75rem;
+}
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--ring);
+}
+
+.shadow-soft { box-shadow: 0 6px 24px rgba(16, 24, 40, 0.06); }
