@@ -102,9 +102,6 @@ export default function Home() {
   const updateField = <K extends keyof ResumeData>(key: K, value: ResumeData[K]) =>
     setData((d) => ({ ...d, [key]: value }));
 
-  const toggleShowOn = (arr: ShowOn, target: "cv" | "resume") =>
-    arr.includes(target) ? arr.filter((x) => x !== target) : [...arr, target];
-
   async function download(type: "resume" | "cv") {
     setBusy(true);
     setError(null);
@@ -742,7 +739,6 @@ function ArrayOfPairs({
   onChange,
   addLabel,
   aLabel,
-  bLabel,
   placeholderA,
   placeholderB,
   headerActions,
