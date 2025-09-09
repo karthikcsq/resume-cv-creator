@@ -96,6 +96,9 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
+  const [texView, setTexView] = useState<null | { type: "resume" | "cv"; latex: string }>(null);
+  const [texBusy, setTexBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const prettyError = useMemo(() => error ?? null, [error]);
 
@@ -150,6 +153,30 @@ export default function Home() {
       setError(e instanceof Error ? e.message : "Render failed");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function fetchTex(type: "resume" | "cv") {
+    setTexBusy(true);
+    setError(null);
+    try {
+      const payload: ResumeData = { ...data };
+      const res = await fetch(`/api/get_tex?type=${type}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: payload }),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || `HTTP ${res.status}`);
+      }
+      const json = await res.json();
+      if (!json.latex) throw new Error("Missing latex in response");
+      setTexView({ type, latex: json.latex });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to fetch LaTeX");
+    } finally {
+      setTexBusy(false);
     }
   }
 
@@ -301,6 +328,20 @@ export default function Home() {
               disabled={busy}
             >
               {showImport ? "Close Import" : "Import JSON"}
+            </button>
+            <button
+              className="btn"
+              disabled={texBusy}
+              onClick={() => fetchTex("resume")}
+            >
+              Get Resume TeX
+            </button>
+            <button
+              className="btn"
+              disabled={texBusy}
+              onClick={() => fetchTex("cv")}
+            >
+              Get CV TeX
             </button>
           </div>
         </header>
@@ -619,6 +660,33 @@ export default function Home() {
             {prettyError}
           </pre>
         )}
+
+        {texView && (
+          <div className="card shadow-soft p-4 space-y-3">
+            <div className="flex items-center gap-3">
+              <h3 className="font-semibold text-sm">
+                LaTeX Source ({texView.type === "cv" ? "CV" : "Resume"})
+              </h3>
+              <button
+                className="btn"
+                onClick={() => {
+                  navigator.clipboard.writeText(texView.latex).then(() => {
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1600);
+                  });
+                }}
+              >
+                {copied ? "Copied" : "Copy"}
+              </button>
+              <button className="btn" onClick={() => setTexView(null)}>
+                Close
+              </button>
+            </div>
+            <pre className="max-h-[480px] overflow-auto text-xs font-mono whitespace-pre-wrap">
+{texView.latex}
+            </pre>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -902,3 +970,5 @@ function JsonPreview({ data }: { data: unknown }) {
     </div>
   );
 }
+
+// (fetchTex moved inside component scope)
