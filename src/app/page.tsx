@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 
 type ShowOn = Array<"cv" | "resume">;
 
@@ -99,6 +99,8 @@ export default function Home() {
   const [texView, setTexView] = useState<null | { type: "resume" | "cv"; latex: string }>(null);
   const [texBusy, setTexBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [healthStatus, setHealthStatus] = useState<"checking" | "healthy" | "unhealthy">("checking");
+  const [lastHealthCheck, setLastHealthCheck] = useState<Date | null>(null);
 
   const prettyError = useMemo(() => error ?? null, [error]);
 
@@ -179,6 +181,35 @@ export default function Home() {
       setTexBusy(false);
     }
   }
+
+  async function checkHealth() {
+    try {
+      const res = await fetch('/api/health', { 
+        method: 'GET',
+        cache: 'no-store'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'healthy') {
+          setHealthStatus('healthy');
+        } else {
+          setHealthStatus('unhealthy');
+        }
+      } else {
+        setHealthStatus('unhealthy');
+      }
+    } catch (e) {
+      setHealthStatus('unhealthy');
+    }
+    setLastHealthCheck(new Date());
+  }
+
+  // Health check polling every 5 seconds
+  useEffect(() => {
+    checkHealth(); // Initial check
+    const interval = setInterval(checkHealth, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   function normalizeShowOn(v: unknown): ShowOn {
     if (Array.isArray(v)) {
@@ -331,14 +362,14 @@ export default function Home() {
             </button>
             <button
               className="btn"
-              disabled={texBusy}
+              disabled={texBusy || healthStatus !== "healthy"}
               onClick={() => fetchTex("resume")}
             >
               Get Resume TeX
             </button>
             <button
               className="btn"
-              disabled={texBusy}
+              disabled={texBusy || healthStatus !== "healthy"}
               onClick={() => fetchTex("cv")}
             >
               Get CV TeX
@@ -637,18 +668,18 @@ export default function Home() {
         </Section>
 
         {/* Actions */}
-    <div className="flex flex-wrap gap-3 items-center">
+        <div className="flex flex-wrap gap-3 items-center">
           <button
             onClick={() => download("resume")}
-            disabled={busy}
-      className="btn btn-accent disabled:opacity-50"
+            disabled={busy || healthStatus !== "healthy"}
+            className="btn btn-accent disabled:opacity-50"
           >
             Download Resume
           </button>
           <button
             onClick={() => download("cv")}
-            disabled={busy}
-      className="btn btn-accent disabled:opacity-50"
+            disabled={busy || healthStatus !== "healthy"}
+            className="btn btn-accent disabled:opacity-50"
           >
             Download CV
           </button>
@@ -687,6 +718,34 @@ export default function Home() {
             </pre>
           </div>
         )}
+
+        {/* Health Status Display */}
+        <div className="card shadow-soft p-3">
+          <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center gap-2">
+              <span className="muted">Backend Status:</span>
+              <span className={`font-medium ${
+                healthStatus === "healthy" ? "text-green-600" : 
+                healthStatus === "unhealthy" ? "text-red-600" : 
+                "text-yellow-600"
+              }`}>
+                {healthStatus === "healthy" ? "● Healthy" : 
+                 healthStatus === "unhealthy" ? "● Unhealthy" : 
+                 "● Checking..."}
+              </span>
+            </div>
+            {lastHealthCheck && (
+              <span className="muted text-xs">
+                Last check: {lastHealthCheck.toLocaleTimeString()}
+              </span>
+            )}
+          </div>
+          {healthStatus === "unhealthy" && (
+            <div className="mt-2 text-xs text-red-600">
+              PDF and TeX generation buttons are disabled until backend is healthy.
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
