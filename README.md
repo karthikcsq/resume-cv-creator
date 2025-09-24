@@ -1,5 +1,9 @@
 This app is a simple Next.js UI for sending resume JSON to a backend and downloading generated Resume/CV PDFs.
 
+## Production
+
+https://resume-cv-creator-latex.vercel.app/
+
 ## Getting Started
 
 Environment variables (optional):
