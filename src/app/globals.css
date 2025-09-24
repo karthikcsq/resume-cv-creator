@@ -2,12 +2,12 @@
 
 /* Neutral, professional theme with subtle accent */
 :root {
-  /* Light cream base */
-  --background: #f1e4c6; /* page background (cream) */
-  --foreground: #111111; /* primary text (near-black) */
-  --surface: #fffaee; /* cards and inputs */
-  --surface-2: #fbf4e6; /* subtle cream block */
-  --border: #ede3d7; /* warm subtle border */
+  /* Light gray base */
+  --background: #99aef9; /* page background (light gray) */
+  --foreground: #030303; /* primary text (near-black) */
+  --surface: #d6defe; /* cards and inputs */
+  --surface-2: #d6defe; /* subtle cream block */
+  --border: #2d2d2d; /* warm subtle border */
   --muted: #5c5346; /* brown-gray secondary text */
   --accent: #527cbb; /* navy accent */
   --accent-strong: #3a67ab; /* darker navy hover */
