@@ -90,8 +90,125 @@ const defaultData: ResumeData = {
   ],
 };
 
+// Cookie utilities
+function setCookie(name: string, value: string, days: number = 30) {
+  const expires = new Date();
+  expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
+  document.cookie = `${name}=${encodeURIComponent(value)};expires=${expires.toUTCString()};path=/`;
+}
+
+function getCookie(name: string): string | null {
+  const nameEQ = name + "=";
+  const ca = document.cookie.split(';');
+  for (let i = 0; i < ca.length; i++) {
+    let c = ca[i];
+    while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+    if (c.indexOf(nameEQ) === 0) return decodeURIComponent(c.substring(nameEQ.length, c.length));
+  }
+  return null;
+}
+
+function loadDataFromCookie(): ResumeData {
+  try {
+    const savedData = getCookie('resumeData');
+    if (savedData) {
+      const parsed = JSON.parse(savedData);
+      // Validate and normalize the loaded data
+      const normalized = normalizeDataFromCookie(parsed);
+      return normalized;
+    }
+  } catch (e) {
+    console.warn('Failed to load data from cookie:', e);
+  }
+  return defaultData;
+}
+
+function normalizeDataFromCookie(input: unknown): ResumeData {
+  const obj = (typeof input === "object" && input) ? (input as Record<string, unknown>) : {};
+  
+  function asString(value: unknown, fallback = ""): string {
+    return typeof value === "string" ? value : fallback;
+  }
+
+  function asStringArray(value: unknown): string[] {
+    return Array.isArray(value) ? value.map((x) => asString(x, "")).filter(Boolean) : [];
+  }
+
+  function normalizeShowOn(v: unknown): ShowOn {
+    if (Array.isArray(v)) {
+      const filtered = v.filter((x): x is "cv" | "resume" => x === "cv" || x === "resume");
+      return (filtered.length ? filtered : ["cv", "resume"]) as ShowOn;
+    }
+    return ["cv", "resume"] as ShowOn;
+  }
+
+  function normalizeLinks(value: unknown): LinkItem[] {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((x) => ({ label: asString(x?.label, ""), url: asString(x?.url, "") }))
+      .filter((x) => x.label || x.url);
+  }
+
+  function normalizeEducation(value: unknown): EducationItem[] {
+    if (!Array.isArray(value)) return [];
+    return value.map((e) => ({
+      institution: asString(e?.institution, ""),
+      location: asString(e?.location, ""),
+      degree: asString(e?.degree, ""),
+      gpa: asString(e?.gpa, ""),
+      dates: asString(e?.dates, ""),
+    }));
+  }
+
+  function normalizeSkills(value: unknown): SkillItem[] {
+    if (!Array.isArray(value)) return [];
+    return value.map((s) => ({
+      category: asString(s?.category, ""),
+      bullets: asStringArray(s?.bullets),
+      show_on: normalizeShowOn(s?.show_on),
+    }));
+  }
+
+  function normalizeExperience(value: unknown): ExperienceItem[] {
+    if (!Array.isArray(value)) return [];
+    return value.map((x) => ({
+      role: asString(x?.role, ""),
+      company: asString(x?.company, ""),
+      location: asString(x?.location, ""),
+      work_type: asString(x?.work_type, ""),
+      start_date: asString(x?.start_date, ""),
+      end_date: asString(x?.end_date, ""),
+      show_on: normalizeShowOn(x?.show_on),
+      bullets: asStringArray(x?.bullets),
+    }));
+  }
+
+  function normalizeProjects(value: unknown): ProjectItem[] {
+    if (!Array.isArray(value)) return [];
+    return value.map((p) => ({
+      title: asString(p?.title, ""),
+      tools: asString(p?.tools, ""),
+      date: asString(p?.date, ""),
+      link: asString(p?.link, ""),
+      show_on: normalizeShowOn(p?.show_on),
+      bullets: asStringArray(p?.bullets),
+    }));
+  }
+
+  return {
+    name: asString(obj.name, ""),
+    contact: asStringArray(obj.contact),
+    links: normalizeLinks(obj.links),
+    education: normalizeEducation(obj.education),
+    skills: normalizeSkills(obj.skills),
+    experience: normalizeExperience(obj.experience),
+    projects: normalizeProjects(obj.projects),
+  };
+}
+
 export default function Home() {
   const [data, setData] = useState<ResumeData>(defaultData);
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
@@ -101,6 +218,10 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const [healthStatus, setHealthStatus] = useState<"checking" | "healthy" | "unhealthy">("checking");
   const [lastHealthCheck, setLastHealthCheck] = useState<Date | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewType, setPreviewType] = useState<"resume" | "cv" | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [showJsonPreview, setShowJsonPreview] = useState(false);
 
   const prettyError = useMemo(() => error ?? null, [error]);
 
@@ -158,6 +279,77 @@ export default function Home() {
     }
   }
 
+  async function previewDocument(type: "resume" | "cv") {
+    setPreviewBusy(true);
+    setError(null);
+    try {
+      // Clean up previous preview URL
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+
+      // Use same data cleaning logic as download
+      const payload: ResumeData = {
+        ...data,
+        contact: data.contact.filter((c) => c.trim() !== ""),
+        links: data.links.filter((l) => l.label.trim() || l.url.trim()),
+        education: data.education.filter(
+          (e) => e.institution.trim() || e.degree.trim() || e.dates.trim()
+        ),
+        skills: data.skills
+          .map((s) => ({
+            ...s,
+            bullets: s.bullets.filter((b) => b.trim() !== ""),
+          }))
+          .filter((s) => s.category.trim() || s.bullets.length > 0),
+        experience: data.experience
+          .map((x) => ({ ...x, bullets: x.bullets.filter((b) => b.trim()) }))
+          .filter((x) => x.role.trim() || x.company.trim()),
+        projects: data.projects
+          .map((p) => ({ ...p, bullets: p.bullets.filter((b) => b.trim()) }))
+          .filter((p) => p.title.trim()),
+      };
+
+      const res = await fetch(`/api/render?type=${type}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      setPreviewUrl(url);
+      setPreviewType(type);
+      setShowJsonPreview(false);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Preview failed");
+    } finally {
+      setPreviewBusy(false);
+    }
+  }
+
+  function closePreview() {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    setPreviewUrl(null);
+    setPreviewType(null);
+    setShowJsonPreview(false);
+  }
+
+  function toggleJsonPreview() {
+    setShowJsonPreview(true);
+    // Close PDF preview when showing JSON
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+      setPreviewType(null);
+    }
+  }
+
   async function fetchTex(type: "resume" | "cv") {
     setTexBusy(true);
     setError(null);
@@ -210,6 +402,15 @@ export default function Home() {
     const interval = setInterval(checkHealth, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  // Cleanup preview URL on unmount
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   function normalizeShowOn(v: unknown): ShowOn {
     if (Array.isArray(v)) {
@@ -294,11 +495,16 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen p-6 sm:p-10">
-      <div className="max-w-5xl mx-auto space-y-8">
-        <header className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Resume/CV Builder</h1>
-          <div className="flex gap-2">
+    <div className="min-h-screen p-4 sm:p-8 lg:p-12">
+      <div className="max-w-7xl mx-auto space-y-12">
+        <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 animate-fade-in">
+          <div className="space-y-2">
+            <h1 className="text-3xl sm:text-4xl font-light tracking-tight bg-gradient-to-r from-purple-400 via-purple-300 to-cyan-300 bg-clip-text text-transparent">
+              Resume/CV Builder
+            </h1>
+            <p className="text-sm muted">Create professional resumes and CVs with one source of truth</p>
+          </div>
+          <div className="flex flex-wrap gap-3">
             <button
               className="btn"
               onClick={() => setData(defaultData)}
@@ -668,28 +874,119 @@ export default function Home() {
         </Section>
 
         {/* Actions */}
-        <div className="flex flex-wrap gap-3 items-center">
-          <button
-            onClick={() => download("resume")}
-            disabled={busy || healthStatus !== "healthy"}
-            className="btn btn-accent disabled:opacity-50"
-          >
-            Download Resume
-          </button>
-          <button
-            onClick={() => download("cv")}
-            disabled={busy || healthStatus !== "healthy"}
-            className="btn btn-accent disabled:opacity-50"
-          >
-            Download CV
-          </button>
-          <JsonPreview data={data} />
+        <div className="glass-card p-6 neon-border">
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap gap-3 justify-center sm:justify-start">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => previewDocument("resume")}
+                    disabled={previewBusy || healthStatus !== "healthy"}
+                    className="btn disabled:opacity-50"
+                  >
+                    Preview Resume
+                  </button>
+                  <button
+                    onClick={() => previewDocument("cv")}
+                    disabled={previewBusy || healthStatus !== "healthy"}
+                    className="btn disabled:opacity-50"
+                  >
+                    Preview CV
+                  </button>
+                  <button
+                    onClick={toggleJsonPreview}
+                    className="btn"
+                  >
+                    Preview JSON
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => download("resume")}
+                    disabled={busy || healthStatus !== "healthy"}
+                    className="btn btn-accent disabled:opacity-50 animate-pulse-glow"
+                  >
+                    Download Resume
+                  </button>
+                  <button
+                    onClick={() => download("cv")}
+                    disabled={busy || healthStatus !== "healthy"}
+                    className="btn btn-accent disabled:opacity-50 animate-pulse-glow"
+                  >
+                    Download CV
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            {/* PDF Preview */}
+            {(previewUrl || previewBusy) && (
+              <div className="space-y-4 animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-light gradient-text">
+                    📄 {previewType === "resume" ? "Resume" : "CV"} Preview
+                  </h3>
+                  <button
+                    onClick={closePreview}
+                    className="btn"
+                  >
+                    ✕ Close Preview
+                  </button>
+                </div>
+                <div className="glass-card p-3 preview-container">
+                  {previewBusy ? (
+                    <div className="preview-loading">
+                      <div className="spinner"></div>
+                    </div>
+                  ) : previewUrl ? (
+                    <iframe
+                      src={previewUrl}
+                      className="w-full h-[600px] sm:h-[800px] rounded-lg"
+                      title={`${previewType} preview`}
+                    />
+                  ) : null}
+                </div>
+              </div>
+            )}
+            
+            {/* JSON Preview */}
+            {showJsonPreview && (
+              <div className="space-y-4 animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-light gradient-text">
+                    � JSON Preview
+                  </h3>
+                  <button
+                    onClick={closePreview}
+                    className="btn"
+                  >
+                    ✕ Close Preview
+                  </button>
+                </div>
+                <div className="glass-card p-3">
+                  <div className="max-h-[600px] sm:max-h-[800px] overflow-auto">
+                    <pre className="json-preview text-xs p-4 whitespace-pre-wrap">
+                      {JSON.stringify(data, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {prettyError && (
-          <pre className="bg-red-50 border border-red-200 text-red-800 p-3 rounded-md text-xs whitespace-pre-wrap">
-            {prettyError}
-          </pre>
+          <div className="glass-card p-4 border-red-500/30 bg-red-900/10">
+            <div className="flex items-start gap-3">
+              <span className="text-red-400 text-lg">⚠️</span>
+              <div>
+                <h3 className="text-sm font-medium text-red-400 mb-2">System Error</h3>
+                <pre className="text-xs text-red-300 whitespace-pre-wrap font-mono">
+                  {prettyError}
+                </pre>
+              </div>
+            </div>
+          </div>
         )}
 
         {texView && (
@@ -720,29 +1017,31 @@ export default function Home() {
         )}
 
         {/* Health Status Display */}
-        <div className="card shadow-soft p-3">
+        <div className="glass-card p-4 neon-border">
           <div className="flex items-center justify-between text-sm">
-            <div className="flex items-center gap-2">
-              <span className="muted">Backend Status:</span>
-              <span className={`font-medium ${
-                healthStatus === "healthy" ? "text-green-600" : 
-                healthStatus === "unhealthy" ? "text-red-600" : 
-                "text-yellow-600"
+            <div className="flex items-center gap-3">
+              <span className="form-label text-xs">System Status</span>
+              <div className={`status-indicator ${
+                healthStatus === "healthy" ? "" : 
+                healthStatus === "unhealthy" ? "status-unhealthy" : 
+                "status-checking"
               }`}>
-                {healthStatus === "healthy" ? "● Healthy" : 
-                 healthStatus === "unhealthy" ? "● Unhealthy" : 
-                 "● Checking..."}
-              </span>
+                <span className="text-sm font-light">
+                  {healthStatus === "healthy" ? "Operational" : 
+                   healthStatus === "unhealthy" ? "Offline" : 
+                   "Connecting..."}
+                </span>
+              </div>
             </div>
             {lastHealthCheck && (
               <span className="muted text-xs">
-                Last check: {lastHealthCheck.toLocaleTimeString()}
+                {lastHealthCheck.toLocaleTimeString()}
               </span>
             )}
           </div>
           {healthStatus === "unhealthy" && (
-            <div className="mt-2 text-xs text-red-600">
-              PDF and TeX generation buttons are disabled until backend is healthy.
+            <div className="mt-3 text-xs text-red-400 border-l-2 border-red-500/30 pl-3">
+              Backend services unavailable. PDF generation is temporarily disabled.
             </div>
           )}
         </div>
@@ -753,9 +1052,14 @@ export default function Home() {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-4">
-      <h2 className="text-lg font-semibold">{title}</h2>
-      <div className="space-y-4 p-5 card shadow-soft">{children}</div>
+    <section className="space-y-6 animate-fade-in">
+      <div className="flex items-center gap-4">
+        <h2 className="text-xl font-light tracking-wide text-purple-300 uppercase">
+          {title}
+        </h2>
+        <div className="flex-1 h-px bg-gradient-to-r from-purple-500/30 via-transparent to-transparent"></div>
+      </div>
+      <div className="space-y-6 p-6 sm:p-8 card shadow-glow">{children}</div>
     </section>
   );
 }
@@ -795,15 +1099,15 @@ function TextInput({
   placeholder?: string;
 }) {
   return (
-    <label className="flex flex-col gap-1 text-sm">
-      <span className="font-medium">{label}</span>
+    <div className="form-group">
+      <span className="form-label">{label}</span>
       <input
         className="input"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
       />
-    </label>
+    </div>
   );
 }
 
@@ -821,20 +1125,20 @@ function ArrayOfTextInputs({
   placeholder?: string;
 }) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">{label}</span>
+        <span className="form-label">{label}</span>
         <button
           type="button"
-          className="btn"
+          className="btn btn-accent"
           onClick={() => onChange([...items, ""]) }
         >
-          {addLabel}
+          + {addLabel}
         </button>
       </div>
-      <div className="space-y-2">
+      <div className="space-y-3">
         {items.map((v, idx) => (
-          <div key={idx} className="flex gap-2">
+          <div key={idx} className="flex gap-3 items-center">
             <input
               className="flex-1 input"
               value={v}
@@ -847,7 +1151,7 @@ function ArrayOfTextInputs({
             />
             <button
               type="button"
-              className="btn"
+              className="icon-button"
               onClick={() => onChange(items.filter((_, i) => i !== idx))}
               aria-label="Remove"
             >
@@ -1006,26 +1310,6 @@ function Repeater<T>({
       >
         Add Item
       </button>
-    </div>
-  );
-}
-
-function JsonPreview({ data }: { data: unknown }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="ml-auto">
-      <button
-        type="button"
-        className="btn"
-        onClick={() => setOpen((o) => !o)}
-      >
-        {open ? "Hide JSON" : "Preview JSON"}
-      </button>
-      {open && (
-        <pre className="mt-3 max-h-72 overflow-auto text-xs p-3 card shadow-soft">
-          {JSON.stringify(data, null, 2)}
-        </pre>
-      )}
     </div>
   );
 }
