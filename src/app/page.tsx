@@ -90,125 +90,8 @@ const defaultData: ResumeData = {
   ],
 };
 
-// Cookie utilities
-function setCookie(name: string, value: string, days: number = 30) {
-  const expires = new Date();
-  expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
-  document.cookie = `${name}=${encodeURIComponent(value)};expires=${expires.toUTCString()};path=/`;
-}
-
-function getCookie(name: string): string | null {
-  const nameEQ = name + "=";
-  const ca = document.cookie.split(';');
-  for (let i = 0; i < ca.length; i++) {
-    let c = ca[i];
-    while (c.charAt(0) === ' ') c = c.substring(1, c.length);
-    if (c.indexOf(nameEQ) === 0) return decodeURIComponent(c.substring(nameEQ.length, c.length));
-  }
-  return null;
-}
-
-function loadDataFromCookie(): ResumeData {
-  try {
-    const savedData = getCookie('resumeData');
-    if (savedData) {
-      const parsed = JSON.parse(savedData);
-      // Validate and normalize the loaded data
-      const normalized = normalizeDataFromCookie(parsed);
-      return normalized;
-    }
-  } catch (e) {
-    console.warn('Failed to load data from cookie:', e);
-  }
-  return defaultData;
-}
-
-function normalizeDataFromCookie(input: unknown): ResumeData {
-  const obj = (typeof input === "object" && input) ? (input as Record<string, unknown>) : {};
-  
-  function asString(value: unknown, fallback = ""): string {
-    return typeof value === "string" ? value : fallback;
-  }
-
-  function asStringArray(value: unknown): string[] {
-    return Array.isArray(value) ? value.map((x) => asString(x, "")).filter(Boolean) : [];
-  }
-
-  function normalizeShowOn(v: unknown): ShowOn {
-    if (Array.isArray(v)) {
-      const filtered = v.filter((x): x is "cv" | "resume" => x === "cv" || x === "resume");
-      return (filtered.length ? filtered : ["cv", "resume"]) as ShowOn;
-    }
-    return ["cv", "resume"] as ShowOn;
-  }
-
-  function normalizeLinks(value: unknown): LinkItem[] {
-    if (!Array.isArray(value)) return [];
-    return value
-      .map((x) => ({ label: asString(x?.label, ""), url: asString(x?.url, "") }))
-      .filter((x) => x.label || x.url);
-  }
-
-  function normalizeEducation(value: unknown): EducationItem[] {
-    if (!Array.isArray(value)) return [];
-    return value.map((e) => ({
-      institution: asString(e?.institution, ""),
-      location: asString(e?.location, ""),
-      degree: asString(e?.degree, ""),
-      gpa: asString(e?.gpa, ""),
-      dates: asString(e?.dates, ""),
-    }));
-  }
-
-  function normalizeSkills(value: unknown): SkillItem[] {
-    if (!Array.isArray(value)) return [];
-    return value.map((s) => ({
-      category: asString(s?.category, ""),
-      bullets: asStringArray(s?.bullets),
-      show_on: normalizeShowOn(s?.show_on),
-    }));
-  }
-
-  function normalizeExperience(value: unknown): ExperienceItem[] {
-    if (!Array.isArray(value)) return [];
-    return value.map((x) => ({
-      role: asString(x?.role, ""),
-      company: asString(x?.company, ""),
-      location: asString(x?.location, ""),
-      work_type: asString(x?.work_type, ""),
-      start_date: asString(x?.start_date, ""),
-      end_date: asString(x?.end_date, ""),
-      show_on: normalizeShowOn(x?.show_on),
-      bullets: asStringArray(x?.bullets),
-    }));
-  }
-
-  function normalizeProjects(value: unknown): ProjectItem[] {
-    if (!Array.isArray(value)) return [];
-    return value.map((p) => ({
-      title: asString(p?.title, ""),
-      tools: asString(p?.tools, ""),
-      date: asString(p?.date, ""),
-      link: asString(p?.link, ""),
-      show_on: normalizeShowOn(p?.show_on),
-      bullets: asStringArray(p?.bullets),
-    }));
-  }
-
-  return {
-    name: asString(obj.name, ""),
-    contact: asStringArray(obj.contact),
-    links: normalizeLinks(obj.links),
-    education: normalizeEducation(obj.education),
-    skills: normalizeSkills(obj.skills),
-    experience: normalizeExperience(obj.experience),
-    projects: normalizeProjects(obj.projects),
-  };
-}
-
 export default function Home() {
   const [data, setData] = useState<ResumeData>(defaultData);
-  const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
@@ -566,20 +449,7 @@ export default function Home() {
             >
               {showImport ? "Close Import" : "Import JSON"}
             </button>
-            <button
-              className="btn"
-              disabled={texBusy || healthStatus !== "healthy"}
-              onClick={() => fetchTex("resume")}
-            >
-              Get Resume TeX
-            </button>
-            <button
-              className="btn"
-              disabled={texBusy || healthStatus !== "healthy"}
-              onClick={() => fetchTex("cv")}
-            >
-              Get CV TeX
-            </button>
+
           </div>
         </header>
 
@@ -954,7 +824,7 @@ export default function Home() {
               <div className="space-y-4 animate-fade-in">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-light gradient-text">
-                    � JSON Preview
+                    JSON Preview
                   </h3>
                   <button
                     onClick={closePreview}
@@ -988,6 +858,32 @@ export default function Home() {
             </div>
           </div>
         )}
+
+        {/* LaTeX Generation */}
+        <div className="glass-card p-4 neon-border">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <h3 className="text-lg font-light gradient-text">LaTeX Source Code</h3>
+              <p className="text-xs muted">Generate LaTeX source for custom compilation</p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                className="btn"
+                disabled={texBusy || healthStatus !== "healthy"}
+                onClick={() => fetchTex("resume")}
+              >
+                {texBusy ? "Generating..." : "Get Resume TeX"}
+              </button>
+              <button
+                className="btn"
+                disabled={texBusy || healthStatus !== "healthy"}
+                onClick={() => fetchTex("cv")}
+              >
+                {texBusy ? "Generating..." : "Get CV TeX"}
+              </button>
+            </div>
+          </div>
+        </div>
 
         {texView && (
           <div className="card shadow-soft p-4 space-y-3">
