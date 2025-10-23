@@ -10,6 +10,7 @@ type EducationItem = {
   degree: string;
   gpa: string;
   dates: string;
+  coursework?: string[];
 };
 type SkillItem = { category: string; bullets: string[]; show_on: ShowOn };
 type ExperienceItem = {
@@ -55,6 +56,7 @@ const defaultData: ResumeData = {
       degree: "B.S. of Computer Science",
       gpa: "4.0",
       dates: "Aug 2024 - May 2028 (Expected)",
+      coursework: ["Data Structures and Algorithms", "Machine Learning"],
     },
   ],
   skills: [
@@ -326,6 +328,7 @@ export default function Home() {
       degree: asString(e?.degree, ""),
       gpa: asString(e?.gpa, ""),
       dates: asString(e?.dates, ""),
+      coursework: asStringArray(e?.coursework),
     }));
   }
 
@@ -409,6 +412,7 @@ export default function Home() {
                       degree: "",
                       gpa: "",
                       dates: "",
+                      coursework: [],
                     },
                   ],
                   skills: [
@@ -554,34 +558,44 @@ export default function Home() {
               degree: "",
               gpa: "",
               dates: "",
+              coursework: [],
             }}
             render={(item, setItem) => (
-              <div className="grid sm:grid-cols-2 gap-3">
-                <TextInput
-                  label="Institution"
-                  value={item.institution}
-                  onChange={(v) => setItem({ ...item, institution: v })}
-                />
-                <TextInput
-                  label="Location"
-                  value={item.location}
-                  onChange={(v) => setItem({ ...item, location: v })}
-                />
-                <TextInput
-                  label="Degree"
-                  value={item.degree}
-                  onChange={(v) => setItem({ ...item, degree: v })}
-                />
-                <TextInput
-                  label="GPA"
-                  value={item.gpa}
-                  onChange={(v) => setItem({ ...item, gpa: v })}
-                />
-                <TextInput
-                  label="Dates"
-                  value={item.dates}
-                  onChange={(v) => setItem({ ...item, dates: v })}
-                  placeholder="Aug 2024 - May 2028"
+              <div className="space-y-3">
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <TextInput
+                    label="Institution"
+                    value={item.institution}
+                    onChange={(v) => setItem({ ...item, institution: v })}
+                  />
+                  <TextInput
+                    label="Location"
+                    value={item.location}
+                    onChange={(v) => setItem({ ...item, location: v })}
+                  />
+                  <TextInput
+                    label="Degree"
+                    value={item.degree}
+                    onChange={(v) => setItem({ ...item, degree: v })}
+                  />
+                  <TextInput
+                    label="GPA"
+                    value={item.gpa}
+                    onChange={(v) => setItem({ ...item, gpa: v })}
+                  />
+                  <TextInput
+                    label="Dates"
+                    value={item.dates}
+                    onChange={(v) => setItem({ ...item, dates: v })}
+                    placeholder="Aug 2024 - May 2028"
+                  />
+                </div>
+                <ArrayOfTextInputs
+                  label="Relevant Coursework"
+                  items={item.coursework || []}
+                  addLabel="Add Course"
+                  placeholder="e.g., Data Structures and Algorithms"
+                  onChange={(coursework) => setItem({ ...item, coursework })}
                 />
               </div>
             )}
